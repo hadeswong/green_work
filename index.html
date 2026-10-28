@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>連鎖店智能報更系統</title>
+    <title>綠在區區報更系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 pb-12">
 
     <!-- 頂部導覽 -->
     <header class="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-50 flex justify-between items-center">
-        <h1 class="text-lg font-bold">連鎖店報更系統</h1>
+        <h1 class="text-lg font-bold">綠在區區報更系統</h1>
         <div id="userInfo" class="text-sm hidden">
             <span id="displayName" class="font-semibold"></span> | 
             <button onclick="logout()" class="underline text-blue-200">登出</button>
@@ -45,15 +45,14 @@
                 <button onclick="switchTab('adminPanel')" id="tabAdmin" class="flex-1 py-2 text-center font-medium rounded-md text-red-600 hidden">管理後台</button>
             </div>
 
-            <!-- 報更畫面 -->
-            <div id="viewBooking" class="space-y-4">
-                <!-- 日期選擇列 -->
-                <div class="bg-white p-3 rounded-xl shadow-sm">
-                    <label class="block text-sm font-semibold text-gray-600 mb-2">選擇下週日期 (星期一至日)</label>
-                    <div id="dateList" class="flex space-x-2 overflow-x-auto pb-2"></div>
-                </div>
+            <!-- 全局日期選擇器（員工與管理員共用） -->
+            <div class="bg-white p-3 rounded-xl shadow-sm border">
+                <label class="block text-sm font-semibold text-gray-600 mb-2">選擇下週日期 (星期一至日)</label>
+                <div id="dateList" class="flex space-x-2 overflow-x-auto pb-2"></div>
+            </div>
 
-                <!-- 分店列表 -->
+            <!-- 員工報更畫面 -->
+            <div id="viewBooking" class="space-y-4">
                 <div id="storeList" class="space-y-4"></div>
             </div>
 
@@ -63,12 +62,12 @@
                 <div id="myRecordsContainer" class="space-y-2"></div>
             </div>
 
-            <!-- 管理員後台 -->
-            <div id="viewAdminPanel" class="hidden space-y-3">
+            <!-- 管理員後台 (優化版：總覽全店及缺席狀態) -->
+            <div id="viewAdminPanel" class="hidden space-y-4">
                 <div class="bg-red-50 border border-red-200 p-3 rounded-lg text-red-700 text-sm">
-                    管理員模式：您可以檢視所有員工更期，並對缺席員工進行取消與釋放名額。
+                    <strong>管理員模式：</strong>正在查看 <span id="adminSelectedDateText" class="font-bold underline"></span> 的全店報更狀況。
                 </div>
-                <div id="adminRecordsContainer" class="space-y-2"></div>
+                <div id="adminStoreSummary" class="space-y-4"></div>
             </div>
 
         </div>
@@ -90,7 +89,7 @@
             { id: "C", name: "C店", slots: ["07:30 - 16:30", "12:00 - 21:00"] }
         ];
 
-        // 動態監聽輸入框以判斷是否為管理員
+        // 監聽管理員登入觸發
         document.getElementById('usernameInput').addEventListener('input', (e) => {
             const val = e.target.value.trim().toLowerCase();
             const pwdContainer = document.getElementById('adminPwdContainer');
@@ -101,7 +100,7 @@
             }
         });
 
-        // 產生下週一至週日的日期
+        // 產生下週一至週日日期
         function getNextWeekDays() {
             let days = [];
             let today = new Date();
@@ -139,6 +138,7 @@
             selectedDate = dateStr;
             renderDateSelector();
             renderStores();
+            if (isAdmin) renderAdminPanel();
         }
 
         async function handleLogin() {
@@ -150,7 +150,7 @@
 
             if (name.toLowerCase() === 'admin') {
                 const pwd = document.getElementById('adminPwdInput').value;
-                if (pwd !== 'admin888') {
+                if (pwd !== 'admin888') { //預設管理員密碼
                     alert('管理員密碼錯誤！');
                     return;
                 }
@@ -168,6 +168,9 @@
 
             if (isAdmin) {
                 document.getElementById('tabAdmin').classList.remove('hidden');
+                switchTab('adminPanel');
+            } else {
+                switchTab('booking');
             }
 
             await fetchBookings();
@@ -199,11 +202,11 @@
             if (isAdmin) renderAdminPanel();
         }
 
+        // 員工檢視畫面
         function renderStores() {
             const container = document.getElementById('storeList');
             container.innerHTML = storesConfig.map(store => {
                 let slotsHtml = store.slots.map(slot => {
-                    // 計算此分店此日期此時段的正選與後備
                     let slotBookings = allBookings.filter(b => b.date === selectedDate && b.store === store.name && b.slot === slot);
                     let normalList = slotBookings.filter(b => b.type === "正選");
                     let backupList = slotBookings.filter(b => b.type === "後備");
@@ -216,9 +219,9 @@
 
                     let buttonHtml = '';
                     if (isAdmin) {
-                        buttonHtml = `<span class="text-xs text-gray-400">管理員不可報更</span>`;
+                        buttonHtml = `<span class="text-xs text-gray-400">管理模式</span>`;
                     } else if (userAlreadyBooked) {
-                        buttonHtml = `<span class="text-xs text-blue-600 font-bold">已登記此時段</span>`;
+                        buttonHtml = `<span class="text-xs text-blue-600 font-bold">已登記</span>`;
                     } else {
                         let btnText = isFull ? "報名後備" : "立即報更";
                         let btnColor = isFull ? "bg-gray-600 hover:bg-gray-700" : "bg-blue-600 hover:bg-blue-700";
@@ -254,7 +257,6 @@
         async function bookShift(store, slot) {
             if (!confirm(`確定要預約 ${selectedDate} ${store} (${slot}) 嗎？`)) return;
 
-            // 顯示載入中提示
             try {
                 let res = await fetch(API_URL, {
                     method: 'POST',
@@ -288,32 +290,68 @@
             `).join('');
         }
 
+        // 管理員後台：全店各時段詳細名額與空缺統計
         function renderAdminPanel() {
-            const container = document.getElementById('adminRecordsContainer');
-            if (allBookings.length === 0) {
-                container.innerHTML = `<p class="text-sm text-gray-500 text-center py-6">目前沒有任何更期記錄</p>`;
-                return;
-            }
+            document.getElementById('adminSelectedDateText').innerText = selectedDate;
+            const container = document.getElementById('adminStoreSummary');
 
-            // 按日期排序
-            let sorted = [...allBookings].sort((a,b) => a.date.localeCompare(b.date));
+            container.innerHTML = storesConfig.map(store => {
+                let slotsHtml = store.slots.map(slot => {
+                    let slotBookings = allBookings.filter(b => b.date === selectedDate && b.store === store.name && b.slot === slot);
+                    let normalList = slotBookings.filter(b => b.type === "正選");
+                    let backupList = slotBookings.filter(b => b.type === "後備");
+                    let missingCount = 2 - normalList.length;
 
-            container.innerHTML = sorted.map(b => `
-                <div class="bg-white p-3 rounded-lg border shadow-sm flex justify-between items-center">
-                    <div>
-                        <div class="text-xs font-semibold text-blue-600">${b.date} | ${b.store}</div>
-                        <div class="text-sm font-bold">${b.name} <span class="text-xs font-normal text-gray-500">(${b.slot})</span></div>
+                    let statusBadge = "";
+                    if (missingCount > 0) {
+                        statusBadge = `<span class="bg-red-100 text-red-700 font-bold text-xs px-2 py-0.5 rounded">尚欠 ${missingCount} 人</span>`;
+                    } else {
+                        statusBadge = `<span class="bg-green-100 text-green-700 font-bold text-xs px-2 py-0.5 rounded">已滿額</span>`;
+                    }
+
+                    // 正選人員名單與取消按鈕
+                    let normalNamesHtml = normalList.length > 0 ? 
+                        normalList.map(b => `
+                            <span class="inline-flex items-center bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs border border-blue-200">
+                                ${b.name}
+                                <button onclick="cancelBooking('${b.id}')" class="ml-1.5 text-red-500 hover:text-red-700 font-bold">×</button>
+                            </span>
+                        `).join(' ') : '<span class="text-xs text-gray-400">尚無正選</span>';
+
+                    // 後備人員名單與取消按鈕
+                    let backupNamesHtml = backupList.length > 0 ? 
+                        backupList.map(b => `
+                            <span class="inline-flex items-center bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs border">
+                                ${b.name} (後備)
+                                <button onclick="cancelBooking('${b.id}')" class="ml-1.5 text-red-500 hover:text-red-700 font-bold">×</button>
+                            </span>
+                        `).join(' ') : '<span class="text-xs text-gray-400">無</span>';
+
+                    return `
+                        <div class="p-3 border rounded-lg bg-gray-50 space-y-2">
+                            <div class="flex justify-between items-center border-b pb-1">
+                                <span class="font-semibold text-sm">${slot}</span>
+                                ${statusBadge}
+                            </div>
+                            <div class="text-xs space-y-1">
+                                <div><strong class="text-gray-700">正選 (${normalList.length}/2)：</strong> ${normalNamesHtml}</div>
+                                <div><strong class="text-gray-500">後備：</strong> ${backupNamesHtml}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="bg-white p-4 rounded-xl shadow-sm border">
+                        <h3 class="font-bold text-gray-800 text-base mb-3 text-blue-800 border-b pb-1">分店：${store.name}</h3>
+                        <div class="space-y-3">${slotsHtml}</div>
                     </div>
-                    <div class="flex items-center space-x-2">
-                        <span class="text-xs px-2 py-1 rounded ${b.type === '正選' ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-700'}">${b.type}</span>
-                        <button onclick="cancelBooking('${b.id}')" class="bg-red-500 text-white text-xs px-2.5 py-1 rounded hover:bg-red-600">取消</button>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         async function cancelBooking(id) {
-            if (!confirm('確定要由管理員取消該名員工的更期嗎？（取消後名額將自動釋放）')) return;
+            if (!confirm('確定要由管理員取消該名員工的更期嗎？（取消後將會釋放名額）')) return;
 
             try {
                 let res = await fetch(API_URL, {
