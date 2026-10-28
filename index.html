@@ -29,21 +29,29 @@
                 <div class="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto text-xl mb-2">
                     <i class="fa-solid fa-user-check"></i>
                 </div>
-                <h2 class="text-xl font-bold text-gray-800">員工 / 管理員登入</h2>
-                <p class="text-xs text-gray-500">請輸入登記姓名以進行排班報更</p>
+                <h2 class="text-xl font-bold text-gray-800">系統登入</h2>
+                <p class="text-xs text-gray-500">請輸入已登記之姓名進入系統</p>
             </div>
 
             <div class="space-y-4">
                 <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1">員工姓名 / 身份</label>
-                    <input type="text" id="usernameInput" placeholder="例如：陳大文 (管理員請輸入 admin)" class="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">您的姓名 / 身份</label>
+                    <input type="text" id="usernameInput" placeholder="例如：陳大文" class="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition">
                 </div>
+                
+                <!-- 管理員登入切換 -->
+                <div class="flex items-center space-x-2 pt-1">
+                    <input type="checkbox" id="isAdminCheckbox" onchange="toggleAdminMode()" class="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500">
+                    <label for="isAdminCheckbox" class="text-xs font-bold text-gray-700 cursor-pointer">以管理員身份登入</label>
+                </div>
+
                 <div id="adminPwdContainer" class="hidden">
                     <label class="block text-xs font-bold text-red-600 mb-1">管理員後台密碼</label>
                     <input type="password" id="adminPwdInput" placeholder="請輸入管理員密碼" class="w-full border border-red-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-red-500 outline-none">
                 </div>
+
                 <button onclick="handleLogin()" class="w-full bg-emerald-600 text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-emerald-700 active:scale-[0.98] transition">
-                    進入排班系統
+                    進入系統
                 </button>
             </div>
         </div>
@@ -98,7 +106,7 @@
                 <div id="adminStoreSummary" class="space-y-4"></div>
             </div>
 
-            <!-- 🛠️ 數據偵錯面板 (可隨時觀察數據是否準確同步) -->
+            <!-- 🛠️ 數據偵錯面板 -->
             <div class="bg-white border border-gray-200 p-3 rounded-2xl text-xs space-y-2 shadow-sm">
                 <div class="flex justify-between items-center font-bold text-gray-600 border-b pb-1">
                     <span><i class="fa-solid fa-code text-emerald-600 mr-1"></i>雲端同步與數據狀態</span>
@@ -127,37 +135,21 @@
         let selectedDate = "";
         let allBookings = [];
 
-        // 更新為官方分店名稱與時間規則
         const storesConfig = [
-            { 
-                id: "A", 
-                name: "綠在元州", 
-                badgeColor: "bg-emerald-600",
-                slots: ["07:30 - 16:30", "12:00 - 21:00", "10:00 - 19:00 (特別時段)"] 
-            },
-            { 
-                id: "B", 
-                name: "綠在白田", 
-                badgeColor: "bg-teal-600",
-                slots: ["07:30 - 16:30", "12:00 - 21:00", "09:00 - 13:00 (特別時段)"] 
-            },
-            { 
-                id: "C", 
-                name: "綠在蘇屋", 
-                badgeColor: "bg-cyan-700",
-                slots: ["07:30 - 16:30", "12:00 - 21:00"] 
-            }
+            { id: "A", name: "綠在元州", badgeColor: "bg-emerald-600", slots: ["07:30 - 16:30", "12:00 - 21:00", "10:00 - 19:00 (特別時段)"] },
+            { id: "B", name: "綠在白田", badgeColor: "bg-teal-600", slots: ["07:30 - 16:30", "12:00 - 21:00", "09:00 - 13:00 (特別時段)"] },
+            { id: "C", name: "綠在蘇屋", badgeColor: "bg-cyan-700", slots: ["07:30 - 16:30", "12:00 - 21:00"] }
         ];
 
-        document.getElementById('usernameInput').addEventListener('input', (e) => {
-            const val = e.target.value.trim().toLowerCase();
+        function toggleAdminMode() {
+            const isChecked = document.getElementById('isAdminCheckbox').checked;
             const pwdContainer = document.getElementById('adminPwdContainer');
-            if (val === 'admin') {
+            if (isChecked) {
                 pwdContainer.classList.remove('hidden');
             } else {
                 pwdContainer.classList.add('hidden');
             }
-        });
+        }
 
         function getNextWeekDays() {
             let days = [];
@@ -207,20 +199,53 @@
 
         async function handleLogin() {
             const name = document.getElementById('usernameInput').value.trim();
+            const isCheckedAdmin = document.getElementById('isAdminCheckbox').checked;
+
             if (!name) {
                 alert('請輸入您的姓名');
                 return;
             }
 
-            if (name.toLowerCase() === 'admin') {
+            if (isCheckedAdmin) {
+                // 管理員登入：向後端 Admins 名冊驗證帳號與密碼
                 const pwd = document.getElementById('adminPwdInput').value;
-                if (pwd !== 'admin888') {
-                    alert('管理員密碼錯誤！');
+                if (!pwd) {
+                    alert('請輸入管理員密碼');
                     return;
                 }
+
+                try {
+                    let checkUrl = `${API_URL}?action=checkAdmin&name=${encodeURIComponent(name)}&password=${encodeURIComponent(pwd)}&t=${new Date().getTime()}`;
+                    let res = await fetch(checkUrl);
+                    let result = await res.json();
+
+                    if (result.status !== "success") {
+                        alert(result.message || "管理員登入失敗！");
+                        return;
+                    }
+                } catch (err) {
+                    alert('驗證連線失敗，請稍後再試');
+                    return;
+                }
+
                 isAdmin = true;
-                currentUser = "系統管理員";
+                currentUser = name;
             } else {
+                // 一般員工登入：向後端 Employees 白名單核對
+                try {
+                    let checkUrl = `${API_URL}?action=checkUser&name=${encodeURIComponent(name)}&t=${new Date().getTime()}`;
+                    let res = await fetch(checkUrl);
+                    let result = await res.json();
+                    
+                    if (result.status !== "success") {
+                        alert(result.message || "此姓名未獲授權登記！");
+                        return;
+                    }
+                } catch (err) {
+                    alert('驗證連線失敗，請稍後再試');
+                    return;
+                }
+
                 isAdmin = false;
                 currentUser = name;
             }
@@ -243,11 +268,13 @@
         function logout() {
             currentUser = null;
             isAdmin = false;
+            document.getElementById('loginSection').classList.add('hidden'); // wait, show login
             document.getElementById('loginSection').classList.remove('hidden');
             document.getElementById('mainSection').classList.add('hidden');
             document.getElementById('userInfo').classList.add('hidden');
             document.getElementById('usernameInput').value = '';
             document.getElementById('adminPwdInput').value = '';
+            document.getElementById('isAdminCheckbox').checked = false;
             document.getElementById('adminPwdContainer').classList.add('hidden');
         }
 
