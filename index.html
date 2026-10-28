@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>綠在區區報更系統</title>
+    <title>綠在區區v2報更系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 pb-12">
 
     <!-- 頂部導覽 -->
     <header class="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-50 flex justify-between items-center">
-        <h1 class="text-lg font-bold">綠在區區報更系統</h1>
+        <h1 class="text-lg font-bold">綠在區區v2報更系統</h1>
         <div id="userInfo" class="text-sm hidden">
             <span id="displayName" class="font-semibold"></span> | 
             <button onclick="logout()" class="underline text-blue-200">登出</button>
@@ -45,7 +45,7 @@
                 <button onclick="switchTab('adminPanel')" id="tabAdmin" class="flex-1 py-2 text-center font-medium rounded-md text-red-600 hidden">管理後台</button>
             </div>
 
-            <!-- 全局日期選擇器（員工與管理員共用） -->
+            <!-- 全局日期選擇器 -->
             <div class="bg-white p-3 rounded-xl shadow-sm border">
                 <label class="block text-sm font-semibold text-gray-600 mb-2">選擇下週日期 (星期一至日)</label>
                 <div id="dateList" class="flex space-x-2 overflow-x-auto pb-2"></div>
@@ -62,7 +62,7 @@
                 <div id="myRecordsContainer" class="space-y-2"></div>
             </div>
 
-            <!-- 管理員後台 (優化版：總覽全店及缺席狀態) -->
+            <!-- 管理員後台 -->
             <div id="viewAdminPanel" class="hidden space-y-4">
                 <div class="bg-red-50 border border-red-200 p-3 rounded-lg text-red-700 text-sm">
                     <strong>管理員模式：</strong>正在查看 <span id="adminSelectedDateText" class="font-bold underline"></span> 的全店報更狀況。
@@ -82,14 +82,12 @@
         let selectedDate = "";
         let allBookings = [];
 
-        // 定義分店與時段規則
         const storesConfig = [
             { id: "A", name: "A店", slots: ["07:30 - 16:30", "12:00 - 21:00", "10:00 - 19:00 (特別)"] },
             { id: "B", name: "B店", slots: ["07:30 - 16:30", "12:00 - 21:00", "09:00 - 13:00 (特別)"] },
             { id: "C", name: "C店", slots: ["07:30 - 16:30", "12:00 - 21:00"] }
         ];
 
-        // 監聽管理員登入觸發
         document.getElementById('usernameInput').addEventListener('input', (e) => {
             const val = e.target.value.trim().toLowerCase();
             const pwdContainer = document.getElementById('adminPwdContainer');
@@ -100,7 +98,6 @@
             }
         });
 
-        // 產生下週一至週日日期
         function getNextWeekDays() {
             let days = [];
             let today = new Date();
@@ -150,7 +147,7 @@
 
             if (name.toLowerCase() === 'admin') {
                 const pwd = document.getElementById('adminPwdInput').value;
-                if (pwd !== 'admin888') { //預設管理員密碼
+                if (pwd !== 'admin888') {
                     alert('管理員密碼錯誤！');
                     return;
                 }
@@ -187,9 +184,10 @@
             document.getElementById('adminPwdContainer').classList.add('hidden');
         }
 
+        // 透過 GET 取得最新資料並防範瀏覽器快取
         async function fetchBookings() {
             try {
-                let res = await fetch(API_URL);
+                let res = await fetch(`${API_URL}?t=${new Date().getTime()}`);
                 let data = await res.json();
                 if (data.status === "success") {
                     allBookings = data.bookings;
@@ -202,7 +200,6 @@
             if (isAdmin) renderAdminPanel();
         }
 
-        // 員工檢視畫面
         function renderStores() {
             const container = document.getElementById('storeList');
             container.innerHTML = storesConfig.map(store => {
@@ -254,38 +251,28 @@
             }).join('');
         }
 
-async function bookShift(store, slot) {
-    if (!confirm(`確定要預約 ${selectedDate} ${store} (${slot}) 嗎？`)) return;
+        // 採用 GET 請求進行報更，完美相容所有手機
+        async function bookShift(store, slot) {
+            if (!confirm(`確定要預約 ${selectedDate} ${store} (${slot}) 嗎？`)) return;
 
-    try {
-        let res = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'text/plain;charset=utf-8' // 避免觸發預檢跨域攔截
-            },
-            body: JSON.stringify({ 
-                action: 'book', 
-                date: selectedDate, 
-                store: store, 
-                slot: slot, 
-                name: currentUser 
-            })
-        });
-        let result = await res.json();
-        
-        if (result.status === "success") {
-            alert(result.message);
-        } else {
-            alert("報更提示: " + result.message);
+            try {
+                let url = `${API_URL}?action=book&date=${encodeURIComponent(selectedDate)}&store=${encodeURIComponent(store)}&slot=${encodeURIComponent(slot)}&name=${encodeURIComponent(currentUser)}&t=${new Date().getTime()}`;
+                let res = await fetch(url);
+                let result = await res.json();
+                
+                alert(result.message);
+                if (result.bookings) {
+                    allBookings = result.bookings;
+                    renderStores();
+                    renderMyRecords();
+                    if (isAdmin) renderAdminPanel();
+                } else {
+                    await fetchBookings();
+                }
+            } catch (err) {
+                alert('網路連線錯誤，請稍後再試');
+            }
         }
-        
-        // 成功後重新撈取雲端最新資料並刷新畫面
-        await fetchBookings();
-    } catch (err) {
-        alert('報更成功或資料已更新，正在重新載入名額...');
-        await fetchBookings();
-    }
-}
 
         function renderMyRecords() {
             const container = document.getElementById('myRecordsContainer');
@@ -307,7 +294,6 @@ async function bookShift(store, slot) {
             `).join('');
         }
 
-        // 管理員後台：全店各時段詳細名額與空缺統計
         function renderAdminPanel() {
             document.getElementById('adminSelectedDateText').innerText = selectedDate;
             const container = document.getElementById('adminStoreSummary');
@@ -319,14 +305,10 @@ async function bookShift(store, slot) {
                     let backupList = slotBookings.filter(b => b.type === "後備");
                     let missingCount = 2 - normalList.length;
 
-                    let statusBadge = "";
-                    if (missingCount > 0) {
-                        statusBadge = `<span class="bg-red-100 text-red-700 font-bold text-xs px-2 py-0.5 rounded">尚欠 ${missingCount} 人</span>`;
-                    } else {
-                        statusBadge = `<span class="bg-green-100 text-green-700 font-bold text-xs px-2 py-0.5 rounded">已滿額</span>`;
-                    }
+                    let statusBadge = missingCount > 0 ? 
+                        `<span class="bg-red-100 text-red-700 font-bold text-xs px-2 py-0.5 rounded">尚欠 ${missingCount} 人</span>` : 
+                        `<span class="bg-green-100 text-green-700 font-bold text-xs px-2 py-0.5 rounded">已滿額</span>`;
 
-                    // 正選人員名單與取消按鈕
                     let normalNamesHtml = normalList.length > 0 ? 
                         normalList.map(b => `
                             <span class="inline-flex items-center bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs border border-blue-200">
@@ -335,7 +317,6 @@ async function bookShift(store, slot) {
                             </span>
                         `).join(' ') : '<span class="text-xs text-gray-400">尚無正選</span>';
 
-                    // 後備人員名單與取消按鈕
                     let backupNamesHtml = backupList.length > 0 ? 
                         backupList.map(b => `
                             <span class="inline-flex items-center bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs border">
@@ -367,17 +348,24 @@ async function bookShift(store, slot) {
             }).join('');
         }
 
+        // 管理員取消更期（同步改為 GET 請求）
         async function cancelBooking(id) {
             if (!confirm('確定要由管理員取消該名員工的更期嗎？（取消後將會釋放名額）')) return;
 
             try {
-                let res = await fetch(API_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ action: 'cancel', id: id, password: 'admin888' })
-                });
+                let url = `${API_URL}?action=cancel&id=${id}&password=admin888&t=${new Date().getTime()}`;
+                let res = await fetch(url);
                 let result = await res.json();
+                
                 alert(result.message);
-                await fetchBookings();
+                if (result.bookings) {
+                    allBookings = result.bookings;
+                    renderStores();
+                    renderMyRecords();
+                    if (isAdmin) renderAdminPanel();
+                } else {
+                    await fetchBookings();
+                }
             } catch (err) {
                 alert('網路連線錯誤');
             }
