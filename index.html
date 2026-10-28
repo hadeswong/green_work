@@ -88,26 +88,44 @@
 
             <!-- 我的更期記錄 -->
             <div id="viewMyRecords" class="hidden space-y-3">
-                <div class="flex justify-between items-center px-1">
-                    <h3 class="font-bold text-gray-700 text-sm">我預約的更期記錄</h3>
-                    <span class="text-xs text-gray-400">登出後重新登入即可檢視</span>
+                <div class="bg-white p-3.5 rounded-2xl border border-emerald-100 shadow-sm space-y-2">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-gray-700 text-sm"><i class="fa-solid fa-filter mr-1 text-emerald-600"></i>篩選更期日期</h3>
+                        <button onclick="resetFilter()" class="text-xs text-emerald-600 underline">顯示全部</button>
+                    </div>
+                    <select id="recordDateFilter" onchange="renderMyRecords()" class="w-full border border-gray-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none bg-gray-50">
+                        <option value="all">全部已預約日期</option>
+                    </select>
                 </div>
+
                 <div id="myRecordsContainer" class="space-y-2.5"></div>
             </div>
 
-            <!-- 管理員後台 -->
+            <!-- 管理員後台 (新增工具欄：匯出 Excel & WhatsApp 轉發) -->
             <div id="viewAdminPanel" class="hidden space-y-4">
-                <div class="bg-red-50 border border-red-200 p-3.5 rounded-2xl text-red-800 text-xs flex items-start space-x-2.5 shadow-sm">
-                    <i class="fa-solid fa-triangle-exclamation text-red-500 text-sm mt-0.5"></i>
-                    <div>
-                        <strong>管理員全店監控：</strong>目前檢視 <span id="adminSelectedDateText" class="font-bold underline"></span> 之排班狀況。若員工缺席可在此點擊 <span class="font-bold">「×」</span> 進行刪除與釋放名額。
+                <div class="bg-red-50 border border-red-200 p-3.5 rounded-2xl text-red-800 text-xs space-y-2 shadow-sm">
+                    <div class="flex items-start space-x-2">
+                        <i class="fa-solid fa-triangle-exclamation text-red-500 text-sm mt-0.5"></i>
+                        <div>
+                            <strong>管理員全店監控：</strong>目前檢視 <span id="adminSelectedDateText" class="font-bold underline"></span> 之排班狀況。點擊 <span class="font-bold">「×」</span> 可取消更期（系統會自動將後備遞補為正選）。
+                        </div>
+                    </div>
+                    <div class="flex space-x-2 pt-1 border-t border-red-200/60">
+                        <button onclick="exportToCSV()" class="flex-1 bg-white text-emerald-700 border border-emerald-300 hover:bg-emerald-50 font-bold py-1.5 px-2 rounded-lg text-xs flex items-center justify-center space-x-1 shadow-sm">
+                            <i class="fa-solid fa-file-excel text-emerald-600"></i>
+                            <span>導出全週更表 (CSV)</span>
+                        </button>
+                        <button onclick="shareToWhatsApp()" class="flex-1 bg-green-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs flex items-center justify-center space-x-1 shadow-sm hover:bg-green-700">
+                            <i class="fa-brands fa-whatsapp"></i>
+                            <span>分享本日排班</span>
+                        </button>
                     </div>
                 </div>
                 <div id="adminStoreSummary" class="space-y-4"></div>
             </div>
 
-            <!-- 🛠️ 數據偵錯面板 -->
-            <div class="bg-white border border-gray-200 p-3 rounded-2xl text-xs space-y-2 shadow-sm">
+            <!-- 🛠️ 數據狀態面板 (只限管理員) -->
+            <div id="adminDebugPanel" class="hidden bg-white border border-gray-200 p-3 rounded-2xl text-xs space-y-2 shadow-sm">
                 <div class="flex justify-between items-center font-bold text-gray-600 border-b pb-1">
                     <span><i class="fa-solid fa-code text-emerald-600 mr-1"></i>雲端同步與數據狀態</span>
                     <button onclick="fetchBookings()" class="bg-gray-100 text-gray-600 px-2.5 py-1 rounded-lg text-[10px] hover:bg-gray-200 active:scale-95 transition">
@@ -137,8 +155,8 @@
 
         const storesConfig = [
             { id: "A", name: "綠在元州", badgeColor: "bg-emerald-600", slots: ["07:30 - 16:30", "12:00 - 21:00", "10:00 - 19:00"] },
-            { id: "B", name: "綠在蘇屋", badgeColor: "bg-cyan-700", slots: ["07:30 - 16:30", "12:00 - 21:00"] },
-            { id: "C", name: "綠在白田", badgeColor: "bg-teal-600", slots: ["07:30 - 16:30", "12:00 - 21:00", "09:00 - 13:00"] }
+            { id: "C", name: "綠在白田", badgeColor: "bg-teal-600", slots: ["07:30 - 16:30", "12:00 - 21:00", "09:00 - 13:00"] },
+            { id: "B", name: "綠在蘇屋", badgeColor: "bg-cyan-700", slots: ["07:30 - 16:30", "12:00 - 21:00"] }
         ];
 
         function toggleAdminMode() {
@@ -207,7 +225,6 @@
             }
 
             if (isCheckedAdmin) {
-                // 管理員登入：向後端 Admins 名冊驗證帳號與密碼
                 const pwd = document.getElementById('adminPwdInput').value;
                 if (!pwd) {
                     alert('請輸入管理員密碼');
@@ -231,7 +248,6 @@
                 isAdmin = true;
                 currentUser = name;
             } else {
-                // 一般員工登入：向後端 Employees 白名單核對
                 try {
                     let checkUrl = `${API_URL}?action=checkUser&name=${encodeURIComponent(name)}&t=${new Date().getTime()}`;
                     let res = await fetch(checkUrl);
@@ -257,8 +273,11 @@
 
             if (isAdmin) {
                 document.getElementById('tabAdmin').classList.remove('hidden');
+                document.getElementById('adminDebugPanel').classList.remove('hidden');
                 switchTab('adminPanel');
             } else {
+                document.getElementById('tabAdmin').classList.add('hidden');
+                document.getElementById('adminDebugPanel').classList.add('hidden');
                 switchTab('booking');
             }
 
@@ -268,7 +287,6 @@
         function logout() {
             currentUser = null;
             isAdmin = false;
-            document.getElementById('loginSection').classList.add('hidden'); // wait, show login
             document.getElementById('loginSection').classList.remove('hidden');
             document.getElementById('mainSection').classList.add('hidden');
             document.getElementById('userInfo').classList.add('hidden');
@@ -289,6 +307,7 @@
                 console.error("無法取得雲端資料", err);
             }
             updateDebugInfo();
+            updateDateFilterDropdown();
             renderStores();
             renderMyRecords();
             if (isAdmin) renderAdminPanel();
@@ -300,6 +319,27 @@
             document.getElementById('debugJson').innerText = JSON.stringify(allBookings, null, 2);
         }
 
+        function updateDateFilterDropdown() {
+            const select = document.getElementById('recordDateFilter');
+            let currentValue = select.value;
+            
+            let myBookings = allBookings.filter(b => b.name === currentUser);
+            let uniqueDates = [...new Set(myBookings.map(b => b.date))].sort();
+
+            select.innerHTML = `<option value="all">全部已預約日期 (${myBookings.length}筆)</option>` + 
+                uniqueDates.map(dateStr => `<option value="${dateStr}">${dateStr}</option>`).join('');
+            
+            if (uniqueDates.includes(currentValue) || currentValue === 'all') {
+                select.value = currentValue;
+            }
+        }
+
+        function resetFilter() {
+            document.getElementById('recordDateFilter').value = 'all';
+            renderMyRecords();
+        }
+
+        // 渲染分店卡片（已優化店名左邊距，往右偏移不貼邊）
         function renderStores() {
             const container = document.getElementById('storeList');
             container.innerHTML = storesConfig.map(store => {
@@ -350,9 +390,10 @@
 
                 return `
                     <div class="bg-white p-4.5 rounded-2xl shadow-sm border border-emerald-100 space-y-3">
-                        <div class="flex items-center space-x-2 border-b border-gray-100 pb-2">
-                            <span class="w-3 h-3 rounded-full ${store.badgeColor}"></span>
-                            <h3 class="font-bold text-gray-800 text-base">${store.name}</h3>
+                        <!-- 店舖名稱加入 pl-2 與 space-x-3，使店名適度往右偏移不貼邊 -->
+                        <div class="flex items-center space-x-3 border-b border-gray-100 pb-2.5 pl-2">
+                            <span class="w-3.5 h-3.5 rounded-full ${store.badgeColor} shadow-sm"></span>
+                            <h3 class="font-bold text-gray-800 text-base tracking-wide">${store.name}</h3>
                         </div>
                         <div class="space-y-3">${slotsHtml}</div>
                     </div>
@@ -372,6 +413,7 @@
                 if (result.bookings) {
                     allBookings = result.bookings;
                     updateDebugInfo();
+                    updateDateFilterDropdown();
                     renderStores();
                     renderMyRecords();
                     if (isAdmin) renderAdminPanel();
@@ -385,13 +427,19 @@
 
         function renderMyRecords() {
             const container = document.getElementById('myRecordsContainer');
+            let filterDate = document.getElementById('recordDateFilter').value;
+
             let myBookings = allBookings.filter(b => b.name === currentUser);
+
+            if (filterDate !== 'all') {
+                myBookings = myBookings.filter(b => b.date === filterDate);
+            }
 
             if (myBookings.length === 0) {
                 container.innerHTML = `
-                    <div class="bg-white p-8 rounded-2xl border text-center space-y-2">
+                    <div class="bg-white p-8 rounded-2xl border text-center space-y-2 shadow-sm">
                         <i class="fa-regular fa-folder-open text-gray-300 text-3xl"></i>
-                        <p class="text-xs text-gray-400">您目前在此時段尚無登記更期</p>
+                        <p class="text-xs text-gray-400">您目前在此篩選條件下尚無登記更期</p>
                     </div>`;
                 return;
             }
@@ -402,7 +450,10 @@
                         <div class="font-bold text-sm text-gray-800">${b.date} <span class="text-emerald-700 ml-1">(${b.store})</span></div>
                         <div class="text-xs text-gray-500"><i class="fa-regular fa-clock mr-1"></i>${b.slot}</div>
                     </div>
-                    <span class="text-xs px-2.5 py-1 rounded-full font-bold ${b.type === '正選' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}">${b.type}</span>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs px-2.5 py-1 rounded-full font-bold ${b.type === '正選' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}">${b.type}</span>
+                        <button onclick="cancelBooking('${b.id}')" class="bg-red-100 text-red-600 hover:bg-red-200 text-xs px-2.5 py-1 rounded-lg font-bold transition">取消</button>
+                    </div>
                 </div>
             `).join('');
         }
@@ -458,9 +509,9 @@
 
                 return `
                     <div class="bg-white p-4.5 rounded-2xl shadow-sm border border-red-100 space-y-3">
-                        <div class="flex items-center space-x-2 border-b border-gray-100 pb-2">
-                            <span class="w-3 h-3 rounded-full ${store.badgeColor}"></span>
-                            <h3 class="font-bold text-gray-800 text-base">${store.name}</h3>
+                        <div class="flex items-center space-x-3 border-b border-gray-100 pb-2.5 pl-2">
+                            <span class="w-3.5 h-3.5 rounded-full ${store.badgeColor} shadow-sm"></span>
+                            <h3 class="font-bold text-gray-800 text-base tracking-wide">${store.name}</h3>
                         </div>
                         <div class="space-y-3">${slotsHtml}</div>
                     </div>
@@ -469,7 +520,7 @@
         }
 
         async function cancelBooking(id) {
-            if (!confirm('確定要刪除/取消該名員工的更期嗎？（系統將釋放名額）')) return;
+            if (!confirm('確定要取消這個更期嗎？（如果有後備人員，系統將自動遞補為正選）')) return;
 
             try {
                 let url = `${API_URL}?action=cancel&id=${id}&t=${new Date().getTime()}`;
@@ -480,6 +531,7 @@
                 if (result.bookings) {
                     allBookings = result.bookings;
                     updateDebugInfo();
+                    updateDateFilterDropdown();
                     renderStores();
                     renderMyRecords();
                     if (isAdmin) renderAdminPanel();
@@ -489,6 +541,44 @@
             } catch (err) {
                 alert('網路連線錯誤');
             }
+        }
+
+        // 新增功能：一鍵導出全週 CSV 排班表
+        function exportToCSV() {
+            if (allBookings.length === 0) {
+                alert("目前沒有任何報更記錄可匯出！");
+                return;
+            }
+            let csvContent = "\uFEFF日期,分店,時段,姓名,身份,登記時間\n";
+            allBookings.forEach(b => {
+                csvContent += `"${b.date}","${b.store}","${b.slot}","${b.name}","${b.type}","${b.timestamp}"\n`;
+            });
+            let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            let link = document.createElement("a");
+            let url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `綠在區區排班表_${selectedDate}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // 新增功能：一鍵分享本日排班狀況至 WhatsApp
+        function shareToWhatsApp() {
+            let dayBookings = allBookings.filter(b => b.date === selectedDate);
+            let text = `📢 *【綠在區區 排班通知】*\n📅 日期：${selectedDate}\n------------------\n`;
+            
+            storesConfig.forEach(store => {
+                text += `\n🏪 *${store.name}*\n`;
+                store.slots.forEach(slot => {
+                    let sb = dayBookings.filter(b => b.store === store.name && b.slot === slot);
+                    let normals = sb.filter(b => b.type === '正選').map(b => b.name).join(', ') || '無';
+                    text += `• ${slot} : ${normals}\n`;
+                });
+            });
+
+            let waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+            window.open(waUrl, '_blank');
         }
 
         function switchTab(tab) {
