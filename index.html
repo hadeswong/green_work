@@ -17,7 +17,7 @@
         </div>
     </header>
 
-    <div class="max-w-md mx-auto p-4">
+    <div class="max-w-md mx-auto p-4 space-y-4">
 
         <!-- 登入畫面 -->
         <div id="loginSection" class="bg-white p-6 rounded-xl shadow-md mt-10">
@@ -36,7 +36,7 @@
         </div>
 
         <!-- 主系統介面 -->
-        <div id="mainSection" class="hidden space-y-4 mt-4">
+        <div id="mainSection" class="hidden space-y-4">
             
             <!-- 分頁切換 -->
             <div class="flex bg-gray-200 p-1 rounded-lg">
@@ -68,6 +68,19 @@
                     <strong>管理員模式：</strong>正在查看 <span id="adminSelectedDateText" class="font-bold underline"></span> 的全店報更狀況。
                 </div>
                 <div id="adminStoreSummary" class="space-y-4"></div>
+            </div>
+
+            <!-- 🛠️ 雲端數據除錯面板（幫您看清雲端回傳的原始資料） -->
+            <div class="bg-gray-100 border border-gray-300 p-3 rounded-xl text-xs space-y-2">
+                <div class="flex justify-between items-center font-bold text-gray-700">
+                    <span>🛠️ 雲端數據除錯面板</span>
+                    <button onclick="fetchBookings()" class="bg-gray-300 px-2 py-1 rounded text-gray-700 hover:bg-gray-400">重新整理</button>
+                </div>
+                <div>目前選擇日期: <span id="debugDate" class="text-blue-600 font-bold"></span></div>
+                <div>雲端總記錄數: <span id="debugCount" class="text-blue-600 font-bold">0</span> 筆</div>
+                <div class="max-h-32 overflow-y-auto bg-white p-2 rounded border font-mono text-[10px]" id="debugJson">
+                    無資料
+                </div>
             </div>
 
         </div>
@@ -134,6 +147,7 @@
         function selectDate(dateStr) {
             selectedDate = dateStr;
             renderDateSelector();
+            updateDebugInfo();
             renderStores();
             if (isAdmin) renderAdminPanel();
         }
@@ -194,21 +208,28 @@
             } catch (err) {
                 console.error("無法取得雲端資料", err);
             }
+            updateDebugInfo();
             renderStores();
             renderMyRecords();
             if (isAdmin) renderAdminPanel();
         }
 
-        // 嚴格比對過濾（加上 .trim()）
+        function updateDebugInfo() {
+            document.getElementById('debugDate').innerText = selectedDate;
+            document.getElementById('debugCount').innerText = allBookings.length;
+            document.getElementById('debugJson').innerText = JSON.stringify(allBookings, null, 2);
+        }
+
         function renderStores() {
             const container = document.getElementById('storeList');
             container.innerHTML = storesConfig.map(store => {
                 let slotsHtml = store.slots.map(slot => {
-                    let slotBookings = allBookings.filter(b => 
-                        String(b.date).trim() === String(selectedDate).trim() && 
-                        String(b.store).trim() === String(store.name).trim() && 
-                        String(b.slot).trim() === String(slot).trim()
-                    );
+                    let slotBookings = allBookings.filter(b => {
+                        let matchDate = String(b.date).trim() === String(selectedDate).trim();
+                        let matchStore = String(b.store).trim() === String(store.name).trim();
+                        let matchSlot = String(b.slot).trim() === String(slot).trim();
+                        return matchDate && matchStore && matchSlot;
+                    });
                     let normalList = slotBookings.filter(b => b.type === "正選");
                     let backupList = slotBookings.filter(b => b.type === "後備");
                     let isFull = normalList.length >= 2;
@@ -266,6 +287,7 @@
                 alert(result.message);
                 if (result.bookings) {
                     allBookings = result.bookings;
+                    updateDebugInfo();
                     renderStores();
                     renderMyRecords();
                     if (isAdmin) renderAdminPanel();
@@ -356,16 +378,17 @@
         }
 
         async function cancelBooking(id) {
-            if (!confirm('確定要由管理員取消該名員工的更期嗎？（取消後將會釋放名額）')) return;
+            if (!confirm('確定要由管理員取消該名員工的更期嗎？')) return;
 
             try {
-                let url = `${API_URL}?action=cancel&id=${id}&password=admin888&t=${new Date().getTime()}`;
+                let url = `${API_URL}?action=cancel&id=${id}&t=${new Date().getTime()}`;
                 let res = await fetch(url);
                 let result = await res.json();
                 
                 alert(result.message);
                 if (result.bookings) {
                     allBookings = result.bookings;
+                    updateDebugInfo();
                     renderStores();
                     renderMyRecords();
                     if (isAdmin) renderAdminPanel();
