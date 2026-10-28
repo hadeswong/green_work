@@ -184,7 +184,6 @@
             document.getElementById('adminPwdContainer').classList.add('hidden');
         }
 
-        // 透過 GET 取得最新資料並防範瀏覽器快取
         async function fetchBookings() {
             try {
                 let res = await fetch(`${API_URL}?t=${new Date().getTime()}`);
@@ -200,11 +199,16 @@
             if (isAdmin) renderAdminPanel();
         }
 
+        // 嚴格比對過濾（加上 .trim()）
         function renderStores() {
             const container = document.getElementById('storeList');
             container.innerHTML = storesConfig.map(store => {
                 let slotsHtml = store.slots.map(slot => {
-                    let slotBookings = allBookings.filter(b => b.date === selectedDate && b.store === store.name && b.slot === slot);
+                    let slotBookings = allBookings.filter(b => 
+                        String(b.date).trim() === String(selectedDate).trim() && 
+                        String(b.store).trim() === String(store.name).trim() && 
+                        String(b.slot).trim() === String(slot).trim()
+                    );
                     let normalList = slotBookings.filter(b => b.type === "正選");
                     let backupList = slotBookings.filter(b => b.type === "後備");
                     let isFull = normalList.length >= 2;
@@ -251,7 +255,6 @@
             }).join('');
         }
 
-        // 採用 GET 請求進行報更，完美相容所有手機
         async function bookShift(store, slot) {
             if (!confirm(`確定要預約 ${selectedDate} ${store} (${slot}) 嗎？`)) return;
 
@@ -300,7 +303,11 @@
 
             container.innerHTML = storesConfig.map(store => {
                 let slotsHtml = store.slots.map(slot => {
-                    let slotBookings = allBookings.filter(b => b.date === selectedDate && b.store === store.name && b.slot === slot);
+                    let slotBookings = allBookings.filter(b => 
+                        String(b.date).trim() === String(selectedDate).trim() && 
+                        String(b.store).trim() === String(store.name).trim() && 
+                        String(b.slot).trim() === String(slot).trim()
+                    );
                     let normalList = slotBookings.filter(b => b.type === "正選");
                     let backupList = slotBookings.filter(b => b.type === "後備");
                     let missingCount = 2 - normalList.length;
@@ -348,7 +355,6 @@
             }).join('');
         }
 
-        // 管理員取消更期（同步改為 GET 請求）
         async function cancelBooking(id) {
             if (!confirm('確定要由管理員取消該名員工的更期嗎？（取消後將會釋放名額）')) return;
 
